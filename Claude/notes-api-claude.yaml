@@ -1,0 +1,1088 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Secure serverless Notes API. Provides CRUD over /notes using API Gateway (REST,
+  Cognito-authorized) -> Lambda (Python, per-route function, least-privilege IAM)
+  -> DynamoDB (encrypted, PITR, on-demand). Logs go to CloudWatch with KMS
+  encryption and a configurable retention period.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: notes-api
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+    Description: Lowercase prefix used to name resources.
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment stage. Controls API Gateway stage name and tags.
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+    Description: CloudWatch Logs retention in days for Lambda and API Gateway logs.
+  ThrottleBurstLimit:
+    Type: Number
+    Default: 50
+    MinValue: 1
+    Description: API Gateway per-method burst limit.
+  ThrottleRateLimit:
+    Type: Number
+    Default: 25
+    MinValue: 1
+    Description: API Gateway per-method steady-state rate limit (req/sec).
+
+Resources:
+
+  # ------------------------------------------------------------------------
+  # KMS — customer-managed key used for DynamoDB SSE and CloudWatch Logs.
+  # ------------------------------------------------------------------------
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub 'CMK for ${AppName}-${Stage} (DynamoDB + CloudWatch Logs)'
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountAdmin
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowCloudWatchLogsUseOfKey
+            Effect: Allow
+            Principal:
+              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              ArnLike:
+                'kms:EncryptionContext:aws:logs:arn':
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-*'
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${AppName}-${Stage}-*'
+
+  EncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${AppName}-${Stage}'
+      TargetKeyId: !Ref EncryptionKey
+
+  # ------------------------------------------------------------------------
+  # DynamoDB — single-table design keyed by userId/noteId.
+  # On-demand billing, PITR, CMK-encrypted, deletion protected.
+  # ------------------------------------------------------------------------
+  NotesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub '${AppName}-${Stage}-notes'
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref EncryptionKey
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: noteId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: noteId
+          KeyType: RANGE
+      Tags:
+        - Key: Application
+          Value: !Ref AppName
+        - Key: Stage
+          Value: !Ref Stage
+
+  # ------------------------------------------------------------------------
+  # Cognito — User Pool used as the API Gateway authorizer.
+  # ------------------------------------------------------------------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Properties:
+      UserPoolName: !Sub '${AppName}-${Stage}-users'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      MfaConfiguration: 'OPTIONAL'
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 1
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${AppName}-${Stage}-client'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  # ------------------------------------------------------------------------
+  # IAM — one role per Lambda, scoped to the actions and the table only.
+  # ------------------------------------------------------------------------
+  ListNotesRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-${Stage}-list-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: dynamodb-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:Query
+                Resource: !GetAtt NotesTable.Arn
+              - Effect: Allow
+                Action: [kms:Decrypt, kms:DescribeKey]
+                Resource: !GetAtt EncryptionKey.Arn
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'dynamodb.${AWS::Region}.amazonaws.com'
+        - PolicyName: cwlogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogStream
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-list:*'
+              - Effect: Allow
+                Action: logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-list:log-stream:*'
+
+  GetNoteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-${Stage}-get-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: dynamodb-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt NotesTable.Arn
+              - Effect: Allow
+                Action: [kms:Decrypt, kms:DescribeKey]
+                Resource: !GetAtt EncryptionKey.Arn
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'dynamodb.${AWS::Region}.amazonaws.com'
+        - PolicyName: cwlogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogStream
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-get:*'
+              - Effect: Allow
+                Action: logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-get:log-stream:*'
+
+  CreateNoteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-${Stage}-create-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: dynamodb-write
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt NotesTable.Arn
+              - Effect: Allow
+                Action: [kms:Encrypt, kms:Decrypt, kms:GenerateDataKey, kms:DescribeKey]
+                Resource: !GetAtt EncryptionKey.Arn
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'dynamodb.${AWS::Region}.amazonaws.com'
+        - PolicyName: cwlogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogStream
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-create:*'
+              - Effect: Allow
+                Action: logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-create:log-stream:*'
+
+  UpdateNoteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-${Stage}-update-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: dynamodb-write
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:UpdateItem
+                Resource: !GetAtt NotesTable.Arn
+              - Effect: Allow
+                Action: [kms:Encrypt, kms:Decrypt, kms:GenerateDataKey, kms:DescribeKey]
+                Resource: !GetAtt EncryptionKey.Arn
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'dynamodb.${AWS::Region}.amazonaws.com'
+        - PolicyName: cwlogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogStream
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-update:*'
+              - Effect: Allow
+                Action: logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-update:log-stream:*'
+
+  DeleteNoteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-${Stage}-delete-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: dynamodb-delete
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:DeleteItem
+                Resource: !GetAtt NotesTable.Arn
+              - Effect: Allow
+                Action: [kms:Decrypt, kms:DescribeKey]
+                Resource: !GetAtt EncryptionKey.Arn
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'dynamodb.${AWS::Region}.amazonaws.com'
+        - PolicyName: cwlogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogStream
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-delete:*'
+              - Effect: Allow
+                Action: logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-${Stage}-delete:log-stream:*'
+
+  # ------------------------------------------------------------------------
+  # DLQ — captures Lambda async invocation failures (e.g. retries exhausted).
+  # Not used for synchronous API Gateway calls but kept for defense in depth
+  # if any function is later hooked to an async source.
+  # ------------------------------------------------------------------------
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AppName}-${Stage}-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: !Ref EncryptionKey
+      KmsDataKeyReusePeriodSeconds: 300
+
+  DlqPublishPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${AppName}-${Stage}-dlq-publish'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sqs:SendMessage
+            Resource: !GetAtt DeadLetterQueue.Arn
+          - Effect: Allow
+            Action: [kms:GenerateDataKey, kms:Decrypt]
+            Resource: !GetAtt EncryptionKey.Arn
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 'sqs.${AWS::Region}.amazonaws.com'
+      Roles:
+        - !Ref ListNotesRole
+        - !Ref GetNoteRole
+        - !Ref CreateNoteRole
+        - !Ref UpdateNoteRole
+        - !Ref DeleteNoteRole
+
+  # Lambda decrypts env vars on cold start using the function's role; this
+  # policy grants Decrypt only when the call originates from the Lambda
+  # service (via kms:ViaService) on this key.
+  EnvVarDecryptPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${AppName}-${Stage}-envvar-decrypt'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: kms:Decrypt
+            Resource: !GetAtt EncryptionKey.Arn
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 'lambda.${AWS::Region}.amazonaws.com'
+      Roles:
+        - !Ref ListNotesRole
+        - !Ref GetNoteRole
+        - !Ref CreateNoteRole
+        - !Ref UpdateNoteRole
+        - !Ref DeleteNoteRole
+
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-${Stage}-apigw-logs'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: apigateway.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+
+  # ------------------------------------------------------------------------
+  # Log groups — pre-created so we control retention and KMS encryption.
+  # ------------------------------------------------------------------------
+  ListLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AppName}-${Stage}-list'
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  GetLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AppName}-${Stage}-get'
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  CreateLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AppName}-${Stage}-create'
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  UpdateLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AppName}-${Stage}-update'
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  DeleteLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AppName}-${Stage}-delete'
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${AppName}-${Stage}-access'
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt EncryptionKey.Arn
+
+  # ------------------------------------------------------------------------
+  # Lambda — one function per route. Inline code keeps the template
+  # self-contained; in real deployments use a packaged artifact and CI.
+  # The handlers derive userId from the Cognito claims (the `sub` claim)
+  # passed through API Gateway, so users can only access their own notes.
+  # ------------------------------------------------------------------------
+  ListNotesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - ListLogGroup
+      - DlqPublishPolicy
+      - EnvVarDecryptPolicy
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_117
+            comment: Function only calls DynamoDB and CloudWatch (public AWS endpoints); VPC adds cost and complexity without a security benefit.
+          - id: CKV_AWS_115
+            comment: Reserved concurrency omitted because the account-level Lambda quota (10) does not leave headroom above the 10-unit unreserved minimum. API Gateway throttling and WAF rate-limiting bound abuse instead.
+    Properties:
+      FunctionName: !Sub '${AppName}-${Stage}-list'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt ListNotesRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Architectures: [arm64]
+      KmsKeyArn: !GetAtt EncryptionKey.Arn  # encrypt env vars at rest
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref NotesTable
+          LOG_LEVEL: INFO
+      TracingConfig: { Mode: Active }
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          ddb = boto3.resource('dynamodb')
+          table = ddb.Table(os.environ['TABLE_NAME'])
+          def _resp(code, body):
+              return {'statusCode': code,
+                      'headers': {'Content-Type': 'application/json',
+                                  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+                                  'X-Content-Type-Options': 'nosniff'},
+                      'body': json.dumps(body)}
+          def handler(event, context):
+              try:
+                  user_id = event['requestContext']['authorizer']['claims']['sub']
+              except KeyError:
+                  return _resp(401, {'message': 'unauthorized'})
+              resp = table.query(
+                  KeyConditionExpression='userId = :u',
+                  ExpressionAttributeValues={':u': user_id},
+                  Limit=100,
+              )
+              return _resp(200, {'items': resp.get('Items', [])})
+
+  GetNoteFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - GetLogGroup
+      - DlqPublishPolicy
+      - EnvVarDecryptPolicy
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_117
+            comment: Function only calls DynamoDB and CloudWatch (public AWS endpoints); VPC adds cost and complexity without a security benefit.
+          - id: CKV_AWS_115
+            comment: Reserved concurrency omitted because the account-level Lambda quota (10) does not leave headroom above the 10-unit unreserved minimum. API Gateway throttling and WAF rate-limiting bound abuse instead.
+    Properties:
+      FunctionName: !Sub '${AppName}-${Stage}-get'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt GetNoteRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Architectures: [arm64]
+      KmsKeyArn: !GetAtt EncryptionKey.Arn  # encrypt env vars at rest
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref NotesTable
+          LOG_LEVEL: INFO
+      TracingConfig: { Mode: Active }
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          ddb = boto3.resource('dynamodb')
+          table = ddb.Table(os.environ['TABLE_NAME'])
+          def _resp(code, body):
+              return {'statusCode': code,
+                      'headers': {'Content-Type': 'application/json',
+                                  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+                                  'X-Content-Type-Options': 'nosniff'},
+                      'body': json.dumps(body)}
+          def handler(event, context):
+              try:
+                  user_id = event['requestContext']['authorizer']['claims']['sub']
+              except KeyError:
+                  return _resp(401, {'message': 'unauthorized'})
+              note_id = (event.get('pathParameters') or {}).get('noteId')
+              if not note_id:
+                  return _resp(400, {'message': 'noteId required'})
+              resp = table.get_item(Key={'userId': user_id, 'noteId': note_id})
+              item = resp.get('Item')
+              if not item:
+                  return _resp(404, {'message': 'not found'})
+              return _resp(200, item)
+
+  CreateNoteFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - CreateLogGroup
+      - DlqPublishPolicy
+      - EnvVarDecryptPolicy
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_117
+            comment: Function only calls DynamoDB and CloudWatch (public AWS endpoints); VPC adds cost and complexity without a security benefit.
+          - id: CKV_AWS_115
+            comment: Reserved concurrency omitted because the account-level Lambda quota (10) does not leave headroom above the 10-unit unreserved minimum. API Gateway throttling and WAF rate-limiting bound abuse instead.
+    Properties:
+      FunctionName: !Sub '${AppName}-${Stage}-create'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt CreateNoteRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Architectures: [arm64]
+      KmsKeyArn: !GetAtt EncryptionKey.Arn  # encrypt env vars at rest
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref NotesTable
+          LOG_LEVEL: INFO
+      TracingConfig: { Mode: Active }
+      Code:
+        ZipFile: |
+          import json, os, uuid, datetime, boto3
+          ddb = boto3.resource('dynamodb')
+          table = ddb.Table(os.environ['TABLE_NAME'])
+          MAX_TITLE = 200
+          MAX_BODY = 10000
+          def _resp(code, body):
+              return {'statusCode': code,
+                      'headers': {'Content-Type': 'application/json',
+                                  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+                                  'X-Content-Type-Options': 'nosniff'},
+                      'body': json.dumps(body)}
+          def handler(event, context):
+              try:
+                  user_id = event['requestContext']['authorizer']['claims']['sub']
+              except KeyError:
+                  return _resp(401, {'message': 'unauthorized'})
+              try:
+                  payload = json.loads(event.get('body') or '{}')
+              except json.JSONDecodeError:
+                  return _resp(400, {'message': 'invalid json'})
+              title = payload.get('title')
+              body = payload.get('body', '')
+              if not isinstance(title, str) or not title.strip() or len(title) > MAX_TITLE:
+                  return _resp(400, {'message': 'invalid title'})
+              if not isinstance(body, str) or len(body) > MAX_BODY:
+                  return _resp(400, {'message': 'invalid body'})
+              now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+              item = {
+                  'userId': user_id,
+                  'noteId': str(uuid.uuid4()),
+                  'title': title.strip(),
+                  'body': body,
+                  'createdAt': now,
+                  'updatedAt': now,
+              }
+              table.put_item(
+                  Item=item,
+                  ConditionExpression='attribute_not_exists(noteId)',
+              )
+              return _resp(201, item)
+
+  UpdateNoteFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - UpdateLogGroup
+      - DlqPublishPolicy
+      - EnvVarDecryptPolicy
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_117
+            comment: Function only calls DynamoDB and CloudWatch (public AWS endpoints); VPC adds cost and complexity without a security benefit.
+          - id: CKV_AWS_115
+            comment: Reserved concurrency omitted because the account-level Lambda quota (10) does not leave headroom above the 10-unit unreserved minimum. API Gateway throttling and WAF rate-limiting bound abuse instead.
+    Properties:
+      FunctionName: !Sub '${AppName}-${Stage}-update'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt UpdateNoteRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Architectures: [arm64]
+      KmsKeyArn: !GetAtt EncryptionKey.Arn  # encrypt env vars at rest
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref NotesTable
+          LOG_LEVEL: INFO
+      TracingConfig: { Mode: Active }
+      Code:
+        ZipFile: |
+          import json, os, datetime, boto3
+          from botocore.exceptions import ClientError
+          ddb = boto3.resource('dynamodb')
+          table = ddb.Table(os.environ['TABLE_NAME'])
+          MAX_TITLE = 200
+          MAX_BODY = 10000
+          def _resp(code, body):
+              return {'statusCode': code,
+                      'headers': {'Content-Type': 'application/json',
+                                  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+                                  'X-Content-Type-Options': 'nosniff'},
+                      'body': json.dumps(body)}
+          def handler(event, context):
+              try:
+                  user_id = event['requestContext']['authorizer']['claims']['sub']
+              except KeyError:
+                  return _resp(401, {'message': 'unauthorized'})
+              note_id = (event.get('pathParameters') or {}).get('noteId')
+              if not note_id:
+                  return _resp(400, {'message': 'noteId required'})
+              try:
+                  payload = json.loads(event.get('body') or '{}')
+              except json.JSONDecodeError:
+                  return _resp(400, {'message': 'invalid json'})
+              sets, vals, names = [], {}, {}
+              if 'title' in payload:
+                  t = payload['title']
+                  if not isinstance(t, str) or not t.strip() or len(t) > MAX_TITLE:
+                      return _resp(400, {'message': 'invalid title'})
+                  sets.append('#t = :t'); names['#t'] = 'title'; vals[':t'] = t.strip()
+              if 'body' in payload:
+                  b = payload['body']
+                  if not isinstance(b, str) or len(b) > MAX_BODY:
+                      return _resp(400, {'message': 'invalid body'})
+                  sets.append('#b = :b'); names['#b'] = 'body'; vals[':b'] = b
+              if not sets:
+                  return _resp(400, {'message': 'nothing to update'})
+              sets.append('#u = :u'); names['#u'] = 'updatedAt'
+              vals[':u'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+              try:
+                  resp = table.update_item(
+                      Key={'userId': user_id, 'noteId': note_id},
+                      UpdateExpression='SET ' + ', '.join(sets),
+                      ExpressionAttributeNames=names,
+                      ExpressionAttributeValues=vals,
+                      ConditionExpression='attribute_exists(noteId)',
+                      ReturnValues='ALL_NEW',
+                  )
+              except ClientError as e:
+                  if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                      return _resp(404, {'message': 'not found'})
+                  raise
+              return _resp(200, resp.get('Attributes', {}))
+
+  DeleteNoteFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - DeleteLogGroup
+      - DlqPublishPolicy
+      - EnvVarDecryptPolicy
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_117
+            comment: Function only calls DynamoDB and CloudWatch (public AWS endpoints); VPC adds cost and complexity without a security benefit.
+          - id: CKV_AWS_115
+            comment: Reserved concurrency omitted because the account-level Lambda quota (10) does not leave headroom above the 10-unit unreserved minimum. API Gateway throttling and WAF rate-limiting bound abuse instead.
+    Properties:
+      FunctionName: !Sub '${AppName}-${Stage}-delete'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt DeleteNoteRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Architectures: [arm64]
+      KmsKeyArn: !GetAtt EncryptionKey.Arn  # encrypt env vars at rest
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref NotesTable
+          LOG_LEVEL: INFO
+      TracingConfig: { Mode: Active }
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          from botocore.exceptions import ClientError
+          ddb = boto3.resource('dynamodb')
+          table = ddb.Table(os.environ['TABLE_NAME'])
+          def _resp(code, body):
+              return {'statusCode': code,
+                      'headers': {'Content-Type': 'application/json',
+                                  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+                                  'X-Content-Type-Options': 'nosniff'},
+                      'body': json.dumps(body) if body is not None else ''}
+          def handler(event, context):
+              try:
+                  user_id = event['requestContext']['authorizer']['claims']['sub']
+              except KeyError:
+                  return _resp(401, {'message': 'unauthorized'})
+              note_id = (event.get('pathParameters') or {}).get('noteId')
+              if not note_id:
+                  return _resp(400, {'message': 'noteId required'})
+              try:
+                  table.delete_item(
+                      Key={'userId': user_id, 'noteId': note_id},
+                      ConditionExpression='attribute_exists(noteId)',
+                  )
+              except ClientError as e:
+                  if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                      return _resp(404, {'message': 'not found'})
+                  raise
+              return _resp(204, None)
+
+  # ------------------------------------------------------------------------
+  # Lambda permissions — let API Gateway invoke each function. The SourceArn
+  # is scoped to the specific method on the specific stage of the specific API.
+  # ------------------------------------------------------------------------
+  ListPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ListNotesFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*/GET/notes'
+
+  GetPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetNoteFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*/GET/notes/*'
+
+  CreatePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateNoteFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*/POST/notes'
+
+  UpdatePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateNoteFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*/PUT/notes/*'
+
+  DeletePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteNoteFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*/DELETE/notes/*'
+
+  # ------------------------------------------------------------------------
+  # API Gateway — REST API, regional endpoint, request validation,
+  # Cognito User Pools authorizer on every method.
+  # ------------------------------------------------------------------------
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${AppName}-${Stage}'
+      Description: Notes REST API
+      EndpointConfiguration:
+        Types: [REGIONAL]
+      DisableExecuteApiEndpoint: false
+      Policy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: execute-api:Invoke
+            Resource: 'execute-api:/*/*/*'
+          - Effect: Deny
+            Principal: '*'
+            Action: execute-api:Invoke
+            Resource: 'execute-api:/*/*/*'
+            Condition:
+              Bool: { 'aws:SecureTransport': 'false' }
+
+  RequestValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      RestApiId: !Ref RestApi
+      Name: validate-body-and-params
+      ValidateRequestBody: true
+      ValidateRequestParameters: true
+
+  Authorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      RestApiId: !Ref RestApi
+      Name: cognito-authorizer
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      ProviderARNs:
+        - !GetAtt UserPool.Arn
+
+  NotesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: notes
+
+  NoteIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref NotesResource
+      PathPart: '{noteId}'
+
+  ListMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref NotesResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref Authorizer
+      RequestValidatorId: !Ref RequestValidator
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListNotesFunction.Arn}/invocations'
+
+  CreateMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref NotesResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref Authorizer
+      RequestValidatorId: !Ref RequestValidator
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateNoteFunction.Arn}/invocations'
+
+  GetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref NoteIdResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref Authorizer
+      RequestValidatorId: !Ref RequestValidator
+      RequestParameters:
+        method.request.path.noteId: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetNoteFunction.Arn}/invocations'
+
+  UpdateMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref NoteIdResource
+      HttpMethod: PUT
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref Authorizer
+      RequestValidatorId: !Ref RequestValidator
+      RequestParameters:
+        method.request.path.noteId: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateNoteFunction.Arn}/invocations'
+
+  DeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref NoteIdResource
+      HttpMethod: DELETE
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref Authorizer
+      RequestValidatorId: !Ref RequestValidator
+      RequestParameters:
+        method.request.path.noteId: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteNoteFunction.Arn}/invocations'
+
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ListMethod
+      - CreateMethod
+      - GetMethod
+      - UpdateMethod
+      - DeleteMethod
+    Properties:
+      RestApiId: !Ref RestApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_120
+            comment: Caching disabled intentionally; responses contain per-user data and would risk cross-tenant leakage if cached.
+    DependsOn: ApiGatewayAccount
+    Properties:
+      RestApiId: !Ref RestApi
+      DeploymentId: !Ref Deployment
+      StageName: !Ref Stage
+      TracingEnabled: true
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency","authorizerError":"$context.authorizer.error"}'
+      MethodSettings:
+        - ResourcePath: /*
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: false
+          MetricsEnabled: true
+          ThrottlingBurstLimit: !Ref ThrottleBurstLimit
+          ThrottlingRateLimit: !Ref ThrottleRateLimit
+      Tags:
+        - Key: Application
+          Value: !Ref AppName
+        - Key: Stage
+          Value: !Ref Stage
+
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${AppName}-${Stage}-acl'
+      Scope: REGIONAL
+      DefaultAction: { Allow: {} }
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${AppName}-${Stage}-acl'
+      Rules:
+        - Name: AWSManagedCommonRules
+          Priority: 0
+          OverrideAction: { None: {} }
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedCommonRules
+        - Name: AWSManagedKnownBadInputs
+          Priority: 1
+          OverrideAction: { None: {} }
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedKnownBadInputs
+        - Name: RateLimitPerIp
+          Priority: 2
+          Action: { Block: {} }
+          Statement:
+            RateBasedStatement:
+              Limit: 2000
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitPerIp
+
+  WebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      WebACLArn: !GetAtt WebAcl.Arn
+      ResourceArn: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/restapis/${RestApi}/stages/${ApiStage}'
+
+Outputs:
+  ApiEndpoint:
+    Description: HTTPS base URL of the deployed API.
+    Value: !Sub 'https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+  UserPoolId:
+    Description: Cognito User Pool ID — used by clients to sign in.
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito User Pool App Client ID.
+    Value: !Ref UserPoolClient
+  TableName:
+    Description: DynamoDB table backing the API.
+    Value: !Ref NotesTable
+  KmsKeyArn:
+    Description: CMK protecting DynamoDB and CloudWatch Logs.
+    Value: !GetAtt EncryptionKey.Arn
