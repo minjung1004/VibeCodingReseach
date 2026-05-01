@@ -1,0 +1,329 @@
+
+       _               _
+   ___| |__   ___  ___| | _______   __
+  / __| '_ \ / _ \/ __| |/ / _ \ \ / /
+ | (__| | | |  __/ (__|   < (_) \ V /
+  \___|_| |_|\___|\___|_|\_\___/ \_/
+
+By Prisma Cloud | version: 3.2.526 
+
+cloudformation scan results:
+
+Passed checks: 25, Failed checks: 12, Skipped checks: 0
+
+Check: CKV_AWS_28: "Ensure DynamoDB point in time recovery (backup) is enabled"
+	PASSED for resource: AWS::DynamoDB::Table.NotesTable
+	File: /notes-api-safe_v3.yaml:67-81
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/general-6
+[0mCheck: CKV_AWS_62: "Ensure no IAM policies that allow full "*-*" administrative privileges are not created"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-iam-45
+[0mCheck: CKV_AWS_107: "Ensure IAM policies does not allow credentials exposure"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-credentials-exposure
+[0mCheck: CKV_AWS_108: "Ensure IAM policies does not allow data exfiltration"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-data-exfiltration
+[0mCheck: CKV_AWS_109: "Ensure IAM policies does not allow permissions management without constraints"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-permissions-management-resource-exposure-without-constraint
+[0mCheck: CKV_AWS_110: "Ensure IAM policies does not allow privilege escalation"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-does-not-allow-privilege-escalation
+[0mCheck: CKV_AWS_61: "Ensure AWS IAM policy does not allow assume role permission across all services"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-iam-45
+[0mCheck: CKV_AWS_60: "Ensure IAM role allows only specific services or principals to assume it"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-iam-44
+[0mCheck: CKV_AWS_63: "Ensure no IAM policies documents allow "*" as a statement's actions"
+	PASSED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/iam-48
+[0mCheck: CKV_AWS_107: "Ensure IAM policies does not allow credentials exposure"
+	PASSED for resource: AWS::IAM::Role.ApiGatewayCloudWatchRole
+	File: /notes-api-safe_v3.yaml:122-135
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-credentials-exposure
+[0mCheck: CKV_AWS_108: "Ensure IAM policies does not allow data exfiltration"
+	PASSED for resource: AWS::IAM::Role.ApiGatewayCloudWatchRole
+	File: /notes-api-safe_v3.yaml:122-135
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-data-exfiltration
+[0mCheck: CKV_AWS_109: "Ensure IAM policies does not allow permissions management without constraints"
+	PASSED for resource: AWS::IAM::Role.ApiGatewayCloudWatchRole
+	File: /notes-api-safe_v3.yaml:122-135
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-permissions-management-resource-exposure-without-constraint
+[0mCheck: CKV_AWS_110: "Ensure IAM policies does not allow privilege escalation"
+	PASSED for resource: AWS::IAM::Role.ApiGatewayCloudWatchRole
+	File: /notes-api-safe_v3.yaml:122-135
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-does-not-allow-privilege-escalation
+[0mCheck: CKV_AWS_61: "Ensure AWS IAM policy does not allow assume role permission across all services"
+	PASSED for resource: AWS::IAM::Role.ApiGatewayCloudWatchRole
+	File: /notes-api-safe_v3.yaml:122-135
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-iam-45
+[0mCheck: CKV_AWS_60: "Ensure IAM role allows only specific services or principals to assume it"
+	PASSED for resource: AWS::IAM::Role.ApiGatewayCloudWatchRole
+	File: /notes-api-safe_v3.yaml:122-135
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-iam-44
+[0mCheck: CKV_AWS_111: "Ensure IAM policies does not allow write access without constraints"
+	PASSED for resource: AWS::IAM::Role.ApiGatewayCloudWatchRole
+	File: /notes-api-safe_v3.yaml:122-135
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-write-access-without-constraint
+[0mCheck: CKV_AWS_66: "Ensure that CloudWatch Log Group specifies retention days"
+	PASSED for resource: AWS::Logs::LogGroup.ApiAccessLogGroup
+	File: /notes-api-safe_v3.yaml:142-145
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-logging-policies/logging-13
+[0mCheck: CKV_AWS_363: "Ensure Lambda Runtime is not deprecated"
+	PASSED for resource: AWS::Lambda::Function.NotesFunction
+	File: /notes-api-safe_v3.yaml:147-254
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-363
+[0mCheck: CKV_AWS_45: "Ensure no hard-coded secrets exist in Lambda environment"
+	PASSED for resource: AWS::Lambda::Function.NotesFunction
+	File: /notes-api-safe_v3.yaml:147-254
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/secrets-policies/bc-aws-secrets-3
+[0mCheck: CKV_AWS_59: "Ensure there is no open access to back-end resources through API"
+	PASSED for resource: AWS::ApiGateway::Method.OptionsNotesMethod
+	File: /notes-api-safe_v3.yaml:373-397
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-6-api-gateway-authorizer-set
+[0mCheck: CKV_AWS_59: "Ensure there is no open access to back-end resources through API"
+	PASSED for resource: AWS::ApiGateway::Method.OptionsNoteByIdMethod
+	File: /notes-api-safe_v3.yaml:399-423
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-6-api-gateway-authorizer-set
+[0mCheck: CKV_AWS_76: "Ensure API Gateway has Access Logging enabled"
+	PASSED for resource: AWS::ApiGateway::Stage.ApiStage
+	File: /notes-api-safe_v3.yaml:438-460
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-logging-policies/logging-17
+[0mCheck: CKV_AWS_73: "Ensure API Gateway has X-Ray Tracing enabled"
+	PASSED for resource: AWS::ApiGateway::Stage.ApiStage
+	File: /notes-api-safe_v3.yaml:438-460
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-logging-policies/logging-15
+[0mCheck: CKV_AWS_364: "Ensure that AWS Lambda function permissions delegated to AWS services are limited by SourceArn or SourceAccount"
+	PASSED for resource: AWS::Lambda::Permission.LambdaInvokePermissionForApi
+	File: /notes-api-safe_v3.yaml:462-468
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-364
+[0mCheck: CKV2_AWS_75: "Ensure no open CORS policy"
+	PASSED for resource: AWS::Lambda::Function.NotesFunction
+	File: /notes-api-safe_v3.yaml:147-254
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-networking-policies/bc-aws-2-75
+[0mCheck: CKV_AWS_119: "Ensure DynamoDB Tables are encrypted using a KMS Customer Managed CMK"
+	FAILED for resource: AWS::DynamoDB::Table.NotesTable
+	File: /notes-api-safe_v3.yaml:67-81
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-52
+[0m
+		[37m67 | [33m  NotesTable:
+		[37m68 | [33m    Type: AWS::DynamoDB::Table
+		[37m69 | [33m    Properties:
+		[37m70 | [33m      BillingMode: PAY_PER_REQUEST
+		[37m71 | [33m      AttributeDefinitions:
+		[37m72 | [33m        - AttributeName: noteId
+		[37m73 | [33m          AttributeType: S
+		[37m74 | [33m      KeySchema:
+		[37m75 | [33m        - AttributeName: noteId
+		[37m76 | [33m          KeyType: HASH
+		[37m77 | [33m      SSESpecification:
+		[37m78 | [33m        SSEEnabled: true
+		[37m79 | [33m      PointInTimeRecoverySpecification:
+		[37m80 | [33m        PointInTimeRecoveryEnabled: true
+		[37m81 | [33m      DeletionProtectionEnabled: false
+
+Check: CKV_AWS_111: "Ensure IAM policies does not allow write access without constraints"
+	FAILED for resource: AWS::IAM::Role.LambdaExecutionRole
+	File: /notes-api-safe_v3.yaml:83-120
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/ensure-iam-policies-do-not-allow-write-access-without-constraint
+[0m
+		[37m83  | [33m  LambdaExecutionRole:
+		[37m84  | [33m    Type: AWS::IAM::Role
+		[37m85  | [33m    Properties:
+		[37m86  | [33m      AssumeRolePolicyDocument:
+		[37m87  | [33m        Version: '2012-10-17'
+		[37m88  | [33m        Statement:
+		[37m89  | [33m          - Sid: LambdaAssumeRole
+		[37m90  | [33m            Effect: Allow
+		[37m91  | [33m            Principal:
+		[37m92  | [33m              Service: lambda.amazonaws.com
+		[37m93  | [33m            Action: sts:AssumeRole
+		[37m94  | [33m      Path: /
+		[37m95  | [33m      Policies:
+		[37m96  | [33m        - PolicyName: lambda-inline-policy
+		[37m97  | [33m          PolicyDocument:
+		[37m98  | [33m            Version: '2012-10-17'
+		[37m99  | [33m            Statement:
+		[37m100 | [33m              - Sid: CloudWatchLogsAccess
+		[37m101 | [33m                Effect: Allow
+		[37m102 | [33m                Action:
+		[37m103 | [33m                  - logs:CreateLogGroup
+		[37m104 | [33m                  - logs:CreateLogStream
+		[37m105 | [33m                  - logs:PutLogEvents
+		[37m106 | [33m                Resource: '*'
+		[37m107 | [33m              - Sid: DynamoDBNotesAccess
+		[37m108 | [33m                Effect: Allow
+		[37m109 | [33m                Action:
+		[37m110 | [33m                  - dynamodb:GetItem
+		[37m111 | [33m                  - dynamodb:PutItem
+		[37m112 | [33m                  - dynamodb:UpdateItem
+		[37m113 | [33m                  - dynamodb:DeleteItem
+		[37m114 | [33m                Resource: !GetAtt NotesTable.Arn
+		[37m115 | [33m              - Sid: XRayWrite
+		[37m116 | [33m                Effect: Allow
+		[37m117 | [33m                Action:
+		[37m118 | [33m                  - xray:PutTraceSegments
+		[37m119 | [33m                  - xray:PutTelemetryRecords
+		[37m120 | [33m                Resource: '*'
+
+Check: CKV_AWS_158: "Ensure that CloudWatch Log Group is encrypted by KMS"
+	FAILED for resource: AWS::Logs::LogGroup.ApiAccessLogGroup
+	File: /notes-api-safe_v3.yaml:142-145
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/ensure-that-cloudwatch-log-group-is-encrypted-by-kms
+[0m
+		[37m142 | [33m  ApiAccessLogGroup:
+		[37m143 | [33m    Type: AWS::Logs::LogGroup
+		[37m144 | [33m    Properties:
+		[37m145 | [33m      RetentionInDays: !Ref LogRetentionDays
+
+Check: CKV_AWS_116: "Ensure that AWS Lambda function is configured for a Dead Letter Queue(DLQ)"
+	FAILED for resource: AWS::Lambda::Function.NotesFunction
+	File: /notes-api-safe_v3.yaml:147-254
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/ensure-that-aws-lambda-function-is-configured-for-a-dead-letter-queue-dlq
+[0m
+		[33mCode lines for this resource are too many. Please use IDE of your choice to review the file.
+Check: CKV_AWS_173: "Check encryption settings for Lambda environment variable"
+	FAILED for resource: AWS::Lambda::Function.NotesFunction
+	File: /notes-api-safe_v3.yaml:147-254
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-serverless-policies/bc-aws-serverless-5
+[0m
+		[33mCode lines for this resource are too many. Please use IDE of your choice to review the file.
+Check: CKV_AWS_115: "Ensure that AWS Lambda function is configured for function-level concurrent execution limit"
+	FAILED for resource: AWS::Lambda::Function.NotesFunction
+	File: /notes-api-safe_v3.yaml:147-254
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/ensure-that-aws-lambda-function-is-configured-for-function-level-concurrent-execution-limit
+[0m
+		[33mCode lines for this resource are too many. Please use IDE of your choice to review the file.
+Check: CKV_AWS_117: "Ensure that AWS Lambda function is configured inside a VPC"
+	FAILED for resource: AWS::Lambda::Function.NotesFunction
+	File: /notes-api-safe_v3.yaml:147-254
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/ensure-that-aws-lambda-function-is-configured-inside-a-vpc-1
+[0m
+		[33mCode lines for this resource are too many. Please use IDE of your choice to review the file.
+Check: CKV_AWS_59: "Ensure there is no open access to back-end resources through API"
+	FAILED for resource: AWS::ApiGateway::Method.PostNotesMethod
+	File: /notes-api-safe_v3.yaml:305-320
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-6-api-gateway-authorizer-set
+[0m
+		[37m305 | [33m  PostNotesMethod:
+		[37m306 | [33m    Type: AWS::ApiGateway::Method
+		[37m307 | [33m    Properties:
+		[37m308 | [33m      RestApiId: !Ref NotesApi
+		[37m309 | [33m      ResourceId: !Ref NotesResource
+		[37m310 | [33m      HttpMethod: POST
+		[37m311 | [33m      AuthorizationType: NONE
+		[37m312 | [33m      RequestValidatorId: !Ref BodyOnlyValidator
+		[37m313 | [33m      RequestModels:
+		[37m314 | [33m        application/json: !Ref NoteRequestModel
+		[37m315 | [33m      Integration:
+		[37m316 | [33m        Type: AWS_PROXY
+		[37m317 | [33m        IntegrationHttpMethod: POST
+		[37m318 | [33m        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NotesFunction.Arn}/invocations'
+		[37m319 | [33m      MethodResponses:
+		[37m320 | [33m        - StatusCode: 201
+
+Check: CKV_AWS_59: "Ensure there is no open access to back-end resources through API"
+	FAILED for resource: AWS::ApiGateway::Method.GetNoteMethod
+	File: /notes-api-safe_v3.yaml:322-336
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-6-api-gateway-authorizer-set
+[0m
+		[37m322 | [33m  GetNoteMethod:
+		[37m323 | [33m    Type: AWS::ApiGateway::Method
+		[37m324 | [33m    Properties:
+		[37m325 | [33m      RestApiId: !Ref NotesApi
+		[37m326 | [33m      ResourceId: !Ref NoteByIdResource
+		[37m327 | [33m      HttpMethod: GET
+		[37m328 | [33m      AuthorizationType: NONE
+		[37m329 | [33m      RequestParameters:
+		[37m330 | [33m        method.request.path.id: true
+		[37m331 | [33m      Integration:
+		[37m332 | [33m        Type: AWS_PROXY
+		[37m333 | [33m        IntegrationHttpMethod: POST
+		[37m334 | [33m        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NotesFunction.Arn}/invocations'
+		[37m335 | [33m      MethodResponses:
+		[37m336 | [33m        - StatusCode: 200
+
+Check: CKV_AWS_59: "Ensure there is no open access to back-end resources through API"
+	FAILED for resource: AWS::ApiGateway::Method.PutNoteMethod
+	File: /notes-api-safe_v3.yaml:338-355
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-6-api-gateway-authorizer-set
+[0m
+		[37m338 | [33m  PutNoteMethod:
+		[37m339 | [33m    Type: AWS::ApiGateway::Method
+		[37m340 | [33m    Properties:
+		[37m341 | [33m      RestApiId: !Ref NotesApi
+		[37m342 | [33m      ResourceId: !Ref NoteByIdResource
+		[37m343 | [33m      HttpMethod: PUT
+		[37m344 | [33m      AuthorizationType: NONE
+		[37m345 | [33m      RequestParameters:
+		[37m346 | [33m        method.request.path.id: true
+		[37m347 | [33m      RequestValidatorId: !Ref BodyOnlyValidator
+		[37m348 | [33m      RequestModels:
+		[37m349 | [33m        application/json: !Ref NoteRequestModel
+		[37m350 | [33m      Integration:
+		[37m351 | [33m        Type: AWS_PROXY
+		[37m352 | [33m        IntegrationHttpMethod: POST
+		[37m353 | [33m        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NotesFunction.Arn}/invocations'
+		[37m354 | [33m      MethodResponses:
+		[37m355 | [33m        - StatusCode: 200
+
+Check: CKV_AWS_59: "Ensure there is no open access to back-end resources through API"
+	FAILED for resource: AWS::ApiGateway::Method.DeleteNoteMethod
+	File: /notes-api-safe_v3.yaml:357-371
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-6-api-gateway-authorizer-set
+[0m
+		[37m357 | [33m  DeleteNoteMethod:
+		[37m358 | [33m    Type: AWS::ApiGateway::Method
+		[37m359 | [33m    Properties:
+		[37m360 | [33m      RestApiId: !Ref NotesApi
+		[37m361 | [33m      ResourceId: !Ref NoteByIdResource
+		[37m362 | [33m      HttpMethod: DELETE
+		[37m363 | [33m      AuthorizationType: NONE
+		[37m364 | [33m      RequestParameters:
+		[37m365 | [33m        method.request.path.id: true
+		[37m366 | [33m      Integration:
+		[37m367 | [33m        Type: AWS_PROXY
+		[37m368 | [33m        IntegrationHttpMethod: POST
+		[37m369 | [33m        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NotesFunction.Arn}/invocations'
+		[37m370 | [33m      MethodResponses:
+		[37m371 | [33m        - StatusCode: 204
+
+Check: CKV_AWS_120: "Ensure API Gateway caching is enabled"
+	FAILED for resource: AWS::ApiGateway::Stage.ApiStage
+	File: /notes-api-safe_v3.yaml:438-460
+	Guide: [1mhttps://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/ensure-api-gateway-caching-is-enabled
+[0m
+		[37m438 | [33m  ApiStage:
+		[37m439 | [33m    Type: AWS::ApiGateway::Stage
+		[37m440 | [33m    DependsOn:
+		[37m441 | [33m      - ApiGatewayAccount
+		[37m442 | [33m    Properties:
+		[37m443 | [33m      StageName: !Ref StageName
+		[37m444 | [33m      RestApiId: !Ref NotesApi
+		[37m445 | [33m      DeploymentId: !Ref ApiDeployment
+		[37m446 | [33m      TracingEnabled: true
+		[37m447 | [33m      MethodSettings:
+		[37m448 | [33m        - ResourcePath: '/*'
+		[37m449 | [33m          HttpMethod: '*'
+		[37m450 | [33m          MetricsEnabled: true
+		[37m451 | [33m          DataTraceEnabled: false
+		[37m452 | [33m          LoggingLevel: INFO
+		[37m453 | [33m          ThrottlingBurstLimit: !Ref ApiBurstLimit
+		[37m454 | [33m          ThrottlingRateLimit: !Ref ApiRateLimit
+		[37m455 | [33m      AccessLogSetting:
+		[37m456 | [33m        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+		[37m457 | [33m        Format: >-
+		[37m458 | [33m          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime",
+		[37m459 | [33m          "httpMethod":"$context.httpMethod","routeKey":"$context.resourcePath","status":"$context.status",
+		[37m460 | [33m          "protocol":"$context.protocol","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}
+
