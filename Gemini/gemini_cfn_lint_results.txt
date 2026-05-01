@@ -1,0 +1,4 @@
+Gemini/gemini.yaml
+74:3:               W2531     Runtime 'nodejs20.x' was deprecated on '2026-04-30'. Creation was disabled on '2026-06-01' and update on '2026-07-01'. Please consider updating to 'nodejs24.x'
+
+Cfn-lint scanned 1 templates against 285 rules and found 0 errors, 1 warnings, and 0 informational violations

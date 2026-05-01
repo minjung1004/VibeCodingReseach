@@ -1,0 +1,1 @@
+Cfn-lint scanned 1 templates against 285 rules and found 0 errors, 0 warnings, and 0 informational violations

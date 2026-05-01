@@ -1,0 +1,54 @@
+------------------------------------------------------------
+/data/ChatGPT/notes-api-safe_v3.yaml
+------------------------------------------------------------------------------------------------------------------------
+[33m| WARN W68[0m
+[33m|[0m
+[33m| Resource: ["ApiDeployment"][0m
+[33m| Line Numbers: [426][0m
+[33m|[0m
+[33m| AWS::ApiGateway::Deployment resources should be associated with an AWS::ApiGateway::UsagePlan. [0m
+------------------------------------------------------------
+[33m| WARN W59[0m
+[33m|[0m
+[33m| Resource: ["PostNotesMethod", "GetNoteMethod", "PutNoteMethod", "DeleteNoteMethod"][0m
+[33m| Line Numbers: [306, 323, 339, 358][0m
+[33m|[0m
+[33m| AWS::ApiGateway::Method should not have AuthorizationType set to 'NONE' unless it is of HttpMethod: OPTIONS.[0m
+------------------------------------------------------------
+[33m| WARN W64[0m
+[33m|[0m
+[33m| Resource: ["ApiStage"][0m
+[33m| Line Numbers: [439][0m
+[33m|[0m
+[33m| AWS::ApiGateway::Stage resources should be associated with an AWS::ApiGateway::UsagePlan. [0m
+------------------------------------------------------------
+[33m| WARN W11[0m
+[33m|[0m
+[33m| Resource: ["LambdaExecutionRole"][0m
+[33m| Line Numbers: [84][0m
+[33m|[0m
+[33m| IAM role should not allow * resource on its permissions policy[0m
+------------------------------------------------------------
+[33m| WARN W89[0m
+[33m|[0m
+[33m| Resource: ["NotesFunction"][0m
+[33m| Line Numbers: [148][0m
+[33m|[0m
+[33m| Lambda functions should be deployed inside a VPC[0m
+------------------------------------------------------------
+[33m| WARN W92[0m
+[33m|[0m
+[33m| Resource: ["NotesFunction"][0m
+[33m| Line Numbers: [148][0m
+[33m|[0m
+[33m| Lambda functions should define ReservedConcurrentExecutions to reserve simultaneous executions[0m
+------------------------------------------------------------
+[33m| WARN W84[0m
+[33m|[0m
+[33m| Resource: ["ApiAccessLogGroup"][0m
+[33m| Line Numbers: [143][0m
+[33m|[0m
+[33m| CloudWatchLogs LogGroup should specify a KMS Key Id to encrypt the log data[0m
+
+Failures count: 0
+Warnings count: 10

@@ -1,0 +1,47 @@
+------------------------------------------------------------
+/data/Claude/notes-api-claude.yaml
+------------------------------------------------------------------------------------------------------------------------
+[33m| WARN W68[0m
+[33m|[0m
+[33m| Resource: ["Deployment"][0m
+[33m| Line Numbers: [982][0m
+[33m|[0m
+[33m| AWS::ApiGateway::Deployment resources should be associated with an AWS::ApiGateway::UsagePlan. [0m
+------------------------------------------------------------
+[33m| WARN W64[0m
+[33m|[0m
+[33m| Resource: ["ApiStage"][0m
+[33m| Line Numbers: [993][0m
+[33m|[0m
+[33m| AWS::ApiGateway::Stage resources should be associated with an AWS::ApiGateway::UsagePlan. [0m
+------------------------------------------------------------
+[33m| WARN W58[0m
+[33m|[0m
+[33m| Resource: ["ListNotesFunction", "GetNoteFunction", "CreateNoteFunction", "UpdateNoteFunction", "DeleteNoteFunction"][0m
+[33m| Line Numbers: [476, 528, 582, 654, 739][0m
+[33m|[0m
+[33m| Lambda functions require permission to write CloudWatch Logs[0m
+------------------------------------------------------------
+[33m| WARN W89[0m
+[33m|[0m
+[33m| Resource: ["ListNotesFunction", "GetNoteFunction", "CreateNoteFunction", "UpdateNoteFunction", "DeleteNoteFunction"][0m
+[33m| Line Numbers: [476, 528, 582, 654, 739][0m
+[33m|[0m
+[33m| Lambda functions should be deployed inside a VPC[0m
+------------------------------------------------------------
+[33m| WARN W92[0m
+[33m|[0m
+[33m| Resource: ["ListNotesFunction", "GetNoteFunction", "CreateNoteFunction", "UpdateNoteFunction", "DeleteNoteFunction"][0m
+[33m| Line Numbers: [476, 528, 582, 654, 739][0m
+[33m|[0m
+[33m| Lambda functions should define ReservedConcurrentExecutions to reserve simultaneous executions[0m
+------------------------------------------------------------
+[33m| WARN W28[0m
+[33m|[0m
+[33m| Resource: ["NotesTable", "DlqPublishPolicy", "EnvVarDecryptPolicy", "ListNotesRole", "GetNoteRole", "CreateNoteRole", "UpdateNoteRole", "DeleteNoteRole", "ApiGatewayCloudWatchRole"][0m
+[33m| Line Numbers: [85, 354, 380, 166, 201, 236, 271, 306, 400][0m
+[33m|[0m
+[33m| Resource found with an explicit name, this disallows updates that require replacement of this resource[0m
+
+Failures count: 0
+Warnings count: 26

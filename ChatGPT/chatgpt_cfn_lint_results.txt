@@ -1,0 +1,4 @@
+ChatGPT/notes-api-safe_v3.yaml
+150:7:              W1030     Runtime {'Ref': 'LambdaRuntime'} was deprecated on '2026-04-30'. Creation was disabled on '2026-06-01' and update on '2026-07-01'. Please consider updating to 'nodejs24.x' when 'Ref' is resolved
+
+Cfn-lint scanned 1 templates against 285 rules and found 0 errors, 1 warnings, and 0 informational violations
